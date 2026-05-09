@@ -619,7 +619,7 @@ def is_excluded(address):
     if any([(addr & net[1] == net[0]) for net in exclude_ip_networks]):
         return True
 
-    if asn not in include_asns:
+    if include_asns and asn not in include_asns:
         return True
 
     return False
