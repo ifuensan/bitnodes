@@ -178,11 +178,9 @@ class CacheInv(Cache):
             "ZADD", key, "LT", timestamp, self.node_key(*node)
         )
 
-        # Set expiry for block invs.
-        # Removal of transaction invs should be managed separately, e.g. using
-        # hourly job to remove transaction invs from old buckets.
-        if type == 2:
-            self.redis_pipe.expire(key, CONF["ttl"])
+        # Apply expiry to both transaction (type 1) and block (type 2) invs.
+        self.redis_pipe.expire(key, CONF["ttl"])
+
 
     def cache_pong(self, node, timestamp, nonce):
         """
