@@ -173,6 +173,12 @@ i2p_proxies =
 # Sampling rate (%) of gossiped .b32.i2p peers to crawl
 i2p_peers_sampling_rate = 100
 
+# Initial .b32.i2p seed nodes. Clearnet peers rarely gossip I2P addresses, so
+# without seeds the I2P ring never bootstraps. Inline list (one per line) and/or
+# a file of addresses (one per line, '#' comments allowed).
+i2p_nodes =
+i2p_nodes_file = conf/i2p_seeds.txt
+
 # Include reachable nodes from https://bitnodes.io/#join-the-network
 include_checked = False
 

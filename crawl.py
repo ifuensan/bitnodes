@@ -528,6 +528,12 @@ def init_pending(redis_conn):
         for node in CONF["onion_nodes"]:
             redis_conn.sadd("pending", json.dumps((node, CONF["port"], TO_SERVICES)))
 
+    # I2P peers are almost never gossiped by clearnet nodes, so without seeds
+    # the .b32.i2p ring never bootstraps. Inject known nodes like onion does.
+    if CONF["i2p"]:
+        for node in CONF["i2p_nodes"]:
+            redis_conn.sadd("pending", json.dumps((node, CONF["port"], TO_SERVICES)))
+
 
 @throttle_run(ttl=lambda: CONF["snapshot_delay"])
 def reset_rules(redis_conn):
@@ -901,6 +907,19 @@ def init_conf(argv):
     CONF["i2p_peers_sampling_rate"] = conf.getint(
         "crawl", "i2p_peers_sampling_rate", fallback=100
     )
+    CONF["i2p_nodes"] = conf_list(conf, "crawl", "i2p_nodes") if conf.has_option(
+        "crawl", "i2p_nodes"
+    ) else set()
+    # Seeds usually live in a version-controlled file (hundreds of them) rather
+    # than inline; merge both sources so either works.
+    i2p_nodes_file = conf.get("crawl", "i2p_nodes_file", fallback="")
+    if i2p_nodes_file and os.path.exists(i2p_nodes_file):
+        with open(i2p_nodes_file) as f:
+            CONF["i2p_nodes"] |= {
+                line.strip()
+                for line in f
+                if line.strip() and not line.startswith("#")
+            }
 
     CONF["include_checked"] = conf.getboolean("crawl", "include_checked")
 
