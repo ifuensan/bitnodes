@@ -154,6 +154,8 @@ import gevent
 import socks
 from binascii import hexlify, unhexlify
 
+import sam
+
 MAGIC_NUMBER = b"\xF9\xBE\xB4\xD9"
 PORT = 8333
 MIN_PROTOCOL_VERSION = 70001
@@ -304,7 +306,20 @@ def unpack(fmt, string):
         raise ReadError(err)
 
 
-def create_connection(address, timeout=OPEN_TIMEOUT, source_address=None, proxy=None):
+def create_connection(
+    address, timeout=OPEN_TIMEOUT, source_address=None, proxy=None, sam_proxy=None
+):
+    if address[0].endswith(I2P_SUFFIX):
+        if sam_proxy is None:
+            raise ProxyRequired(
+                "i2p sam proxy is required to connect to .b32.i2p address"
+            )
+        try:
+            # Lease set lookups and tunnel selection dwarf clearnet connect
+            # times; the short clearnet open timeout would kill most dials.
+            return sam.stream_connect(sam_proxy, address[0], timeout=max(timeout, 60))
+        except sam.SamError as err:
+            raise ConnectionError(err)
     if address[0].endswith(ONION_SUFFIX) and proxy is None:
         raise ProxyRequired("tor proxy is required to connect to .onion address")
     if proxy:
@@ -923,6 +938,7 @@ class Connection(object):
         self.open_timeout = conf.get("open_timeout", OPEN_TIMEOUT)
         self.socket_timeout = conf.get("socket_timeout", SOCKET_TIMEOUT)
         self.proxy = conf.get("proxy", None)
+        self.sam_proxy = conf.get("sam_proxy", None)
         self.socket = None
         # Bits per second (bps) samples for this connection.
         self.bps = deque([], maxlen=128)
@@ -933,6 +949,7 @@ class Connection(object):
             timeout=self.open_timeout,
             source_address=self.from_addr,
             proxy=self.proxy,
+            sam_proxy=self.sam_proxy,
         )
         self.socket.settimeout(self.socket_timeout)
 

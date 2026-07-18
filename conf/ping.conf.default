@@ -72,5 +72,13 @@ onion_relay = 1
 tor_proxies =
     127.0.0.1:9050
 
+# Attempt to establish connection with .b32.i2p nodes (requires a running
+# I2P router with its SAM bridge enabled)
+i2p = False
+
+# SAM v3 bridge endpoint(s), one per line
+i2p_proxies =
+    127.0.0.1:7656
+
 # Relative path to directory containing timestamp-prefixed JSON crawl files
 crawl_dir = data/crawl/f9beb4d9

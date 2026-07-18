@@ -162,6 +162,17 @@ tor_proxies =
 # List of initial .onion nodes
 onion_nodes =
 
+# Attempt to establish connection with .b32.i2p nodes (requires a running
+# I2P router with its SAM bridge enabled)
+i2p = False
+
+# SAM v3 bridge endpoint(s), one per line
+i2p_proxies =
+    127.0.0.1:7656
+
+# Sampling rate (%) of gossiped .b32.i2p peers to crawl
+i2p_peers_sampling_rate = 100
+
 # Include reachable nodes from https://bitnodes.io/#join-the-network
 include_checked = False
 

@@ -48,7 +48,7 @@ import gevent.pool
 import redis.connection
 from binascii import hexlify, unhexlify
 
-from protocol import Connection, ConnectionError, ONION_SUFFIX, ProtocolError
+from protocol import Connection, ConnectionError, I2P_SUFFIX, ONION_SUFFIX, ProtocolError
 from utils import (
     conf_list,
     get_keys,
@@ -241,6 +241,7 @@ class ConnectionManager(object):
 
         self.relay = CONF["relay"]
         self.proxy = None
+        self.sam_proxy = None
 
         self.cidr_key = None
         self.cidr_limit = None
@@ -254,6 +255,8 @@ class ConnectionManager(object):
             if self.address.endswith(ONION_SUFFIX) and CONF["onion"]:
                 self.relay = CONF["onion_relay"]
                 self.proxy = random.choice(CONF["tor_proxies"])
+            elif self.address.endswith(I2P_SUFFIX) and CONF["i2p"]:
+                self.sam_proxy = random.choice(CONF["i2p_proxies"])
 
             self.init_cidr_limit()
 
@@ -261,7 +264,7 @@ class ConnectionManager(object):
         """
         Initialize prefix-level connection limit for the address.
         """
-        if self.address.endswith(ONION_SUFFIX):
+        if self.address.endswith(ONION_SUFFIX) or self.address.endswith(I2P_SUFFIX):
             return
 
         family = socket.AF_INET6 if ":" in self.address else socket.AF_INET
@@ -344,6 +347,7 @@ class ConnectionManager(object):
             open_timeout=CONF["open_timeout"],
             socket_timeout=CONF["socket_timeout"],
             proxy=self.proxy,
+            sam_proxy=self.sam_proxy,
             protocol_version=CONF["protocol_version"],
             to_services=self.services,
             from_services=CONF["services"],
@@ -468,13 +472,15 @@ def set_reachable(nodes, redis_conn):
     """
     redis_pipe = redis_conn.pipeline()
 
-    ipv4 = ipv6 = onion = 0
+    ipv4 = ipv6 = onion = i2p = 0
     for address, port, services, height in nodes:
         if redis_conn.exists(f"open:{address}-{port}"):
             continue
         redis_pipe.sadd("reachable", json.dumps((address, port, services, height)))
         if address.endswith(ONION_SUFFIX):
             onion += 1
+        elif address.endswith(I2P_SUFFIX):
+            i2p += 1
         elif "." in address:
             ipv4 += 1
         else:
@@ -482,7 +488,7 @@ def set_reachable(nodes, redis_conn):
 
     redis_pipe.execute()
 
-    logging.info("IPv4: %d, IPv6: %d, .onion: %d", ipv4, ipv6, onion)
+    logging.info("IPv4: %d, IPv6: %d, .onion: %d, .i2p: %d", ipv4, ipv6, onion, i2p)
 
 
 def set_cidr_limits(redis_conn):
@@ -558,6 +564,14 @@ def init_conf(argv):
     CONF["onion"] = conf.getboolean("ping", "onion")
     CONF["tor_proxies"] = ip_port_list(conf_list(conf, "ping", "tor_proxies"))
     CONF["onion_relay"] = conf.getint("ping", "onion_relay")
+
+    # Fallbacks keep conf files generated before this feature working.
+    CONF["i2p"] = conf.getboolean("ping", "i2p", fallback=False)
+    CONF["i2p_proxies"] = list(
+        conf_list(conf, "ping", "i2p_proxies")
+        if conf.has_option("ping", "i2p_proxies")
+        else []
+    )
 
     CONF["crawl_dir"] = conf.get("ping", "crawl_dir")
     if not os.path.exists(CONF["crawl_dir"]):

@@ -48,7 +48,7 @@ import redis.connection
 from binascii import hexlify, unhexlify
 from geoip2.errors import AddressNotFoundError
 
-from protocol import ONION_SUFFIX
+from protocol import I2P_SUFFIX, ONION_SUFFIX
 from utils import GeoIp, init_logger, new_redis_conn
 
 redis.connection.socket = gevent.socket
@@ -92,6 +92,7 @@ class Resolve(object):
                 ttl < 0.1 * CONF["ttl"]  # Less than 10% of initial TTL.
                 and expiring < 1000
                 and not address.endswith(ONION_SUFFIX)
+                and not address.endswith(I2P_SUFFIX)
             ):
                 self.resolved["hostname"][address] = None
                 expiring += 1
@@ -180,7 +181,7 @@ class Resolve(object):
         asn = None
         org = None
 
-        if not address.endswith(ONION_SUFFIX):
+        if not address.endswith(ONION_SUFFIX) and not address.endswith(I2P_SUFFIX):
             try:
                 gcountry = self.geoip.country(address)
             except AddressNotFoundError:
@@ -205,6 +206,9 @@ class Resolve(object):
         if address.endswith(ONION_SUFFIX):
             asn = "TOR"
             org = "Tor network"
+        elif address.endswith(I2P_SUFFIX):
+            asn = "I2P"
+            org = "I2P network"
         else:
             try:
                 asn_record = self.geoip.asn(address)

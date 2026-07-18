@@ -217,11 +217,16 @@ def set_pending(conn, redis_conn, redis_pipe):
     """
     peers = get_cached_peers(conn, redis_conn)
     for peer in peers:
-        # I2P and CJDNS peers are cached but not crawled.
+        # CJDNS peers are cached but not crawled. I2P peers are crawled
+        # only when a SAM bridge is configured, at the configured rate.
         address = peer[0]
         if address.endswith(I2P_SUFFIX):
-            continue
-        if not address.endswith(ONION_SUFFIX) and ip_address(address) in CJDNS_NETWORK:
+            if (
+                not CONF["i2p"]
+                or hash(address) % 100 >= CONF["i2p_peers_sampling_rate"]
+            ):
+                continue
+        elif not address.endswith(ONION_SUFFIX) and ip_address(address) in CJDNS_NETWORK:
             continue
         redis_pipe.sadd("pending", json.dumps(peer))
 
@@ -246,15 +251,24 @@ def connect(key, redis_conn):
         # Spread 300 connections over 1 minute window.
         backoff_time = 60 * random.uniform(0.0, 2.0) / 300
         gevent.sleep(backoff_time)
+    elif address.endswith(I2P_SUFFIX):
+        address_type = "i2p"
+        # Same pacing as onion: tunnel builds are expensive for the router.
+        backoff_time = 60 * random.uniform(0.0, 2.0) / 300
+        gevent.sleep(backoff_time)
     elif "." in address:
         address_type = "ipv4"
     else:
         address_type = "ipv6"
 
     proxy = None
+    sam_proxy = None
 
     if address.endswith(ONION_SUFFIX) and CONF["onion"]:
         proxy = random.choice(CONF["tor_proxies"])
+
+    if address_type == "i2p" and CONF["i2p"]:
+        sam_proxy = random.choice(CONF["i2p_proxies"])
 
     if CONF["ipv6_proxies"] and address_type == "ipv6":
         proxy = random.choice(CONF["ipv6_proxies"])
@@ -275,6 +289,7 @@ def connect(key, redis_conn):
         open_timeout=CONF["open_timeout"],
         socket_timeout=CONF["socket_timeout"],
         proxy=proxy,
+        sam_proxy=sam_proxy,
         protocol_version=CONF["protocol_version"],
         to_services=services,
         from_services=CONF["services"],
@@ -874,6 +889,18 @@ def init_conf(argv):
     CONF["onion"] = conf.getboolean("crawl", "onion")
     CONF["tor_proxies"] = ip_port_list(conf_list(conf, "crawl", "tor_proxies"))
     CONF["onion_nodes"] = conf_list(conf, "crawl", "onion_nodes")
+
+    # I2P keys use fallbacks so conf files generated before this feature
+    # keep working with I2P crawling disabled.
+    CONF["i2p"] = conf.getboolean("crawl", "i2p", fallback=False)
+    CONF["i2p_proxies"] = list(
+        conf_list(conf, "crawl", "i2p_proxies")
+        if conf.has_option("crawl", "i2p_proxies")
+        else []
+    )
+    CONF["i2p_peers_sampling_rate"] = conf.getint(
+        "crawl", "i2p_peers_sampling_rate", fallback=100
+    )
 
     CONF["include_checked"] = conf.getboolean("crawl", "include_checked")
 
