@@ -686,6 +686,9 @@ class Serializer(object):
                 network_id = NETWORK_TORV3
             else:
                 network_id = NETWORK_TORV2
+        elif ip_address.endswith(I2P_SUFFIX):
+            # Must precede the IPv4 check: a .b32.i2p address contains dots.
+            network_id = NETWORK_I2P
         elif "." in ip_address:
             network_id = NETWORK_IPV4
         else:
@@ -700,6 +703,9 @@ class Serializer(object):
             elif network_id == NETWORK_TORV2:
                 # 10 bytes
                 network_address.append(b32decode(ip_address[:-6], True))
+            elif network_id == NETWORK_I2P:
+                # 32 bytes: re-pad the stripped base32 destination hash.
+                network_address.append(b32decode(ip_address[:-8] + "====", True))
             elif network_id == NETWORK_IPV4:
                 # 4 bytes
                 network_address.append(socket.inet_pton(socket.AF_INET, ip_address))
@@ -712,6 +718,11 @@ class Serializer(object):
             if network_id == NETWORK_TORV2 or network_id == NETWORK_TORV3:
                 # Convert .onion address to its IPv6 equivalent (6 + 10 bytes).
                 network_address.append(ONION_PREFIX + b32decode(ip_address[:-6], True))
+            elif network_id == NETWORK_I2P:
+                # The legacy addr format can't represent I2P. The version
+                # message's address field is vestigial (the peer ignores it),
+                # so send a null address instead of crashing on inet_pton.
+                network_address.append(b"\x00" * 16)
             elif network_id == NETWORK_IPV4:
                 # Unused (12 bytes) + IPv4 (4 bytes) = IPv4-mapped IPv6 address
                 unused = b"\x00" * 10 + b"\xFF" * 2
