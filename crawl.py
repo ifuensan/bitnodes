@@ -370,7 +370,7 @@ def restart(timestamp, redis_conn):
     redis_pipe.execute()
 
     nodes = set()
-    ipv4 = ipv6 = onion = 0
+    ipv4 = ipv6 = onion = i2p = 0
 
     for key in keys:
         (address, port, services) = key.decode()[5:].split("-", 2)
@@ -380,6 +380,8 @@ def restart(timestamp, redis_conn):
 
         if address.endswith(ONION_SUFFIX):
             onion += 1
+        elif address.endswith(I2P_SUFFIX):
+            i2p += 1
         elif "." in address:
             ipv4 += 1
         else:
@@ -406,11 +408,12 @@ def restart(timestamp, redis_conn):
 
     reachable_nodes = len(nodes)
     logging.info(
-        "Reachable nodes: %d, IPv4: %d, IPv6: %d, .onion: %d",
+        "Reachable nodes: %d, IPv4: %d, IPv6: %d, .onion: %d, .i2p: %d",
         reachable_nodes,
         ipv4,
         ipv6,
         onion,
+        i2p,
     )
     redis_conn.lpush("nodes", json.dumps((timestamp, reachable_nodes)))
     dump(timestamp, nodes, redis_conn)
