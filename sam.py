@@ -88,14 +88,19 @@ def _session_id(endpoint, timeout):
         return session_id
 
 
-def _drop_session(endpoint):
+def _drop_session(endpoint, session_id=None):
+    # Only drop if it's still the same session: a greenlet holding a stale id
+    # after an i2pd restart must not close the fresh session another greenlet
+    # just built and cached.
     with _sessions_lock:
-        cached = _sessions.pop(endpoint, None)
-        if cached is not None:
-            try:
-                cached[1].close()
-            except OSError:
-                pass
+        cached = _sessions.get(endpoint)
+        if cached is None or (session_id is not None and cached[0] != session_id):
+            return
+        _sessions.pop(endpoint, None)
+        try:
+            cached[1].close()
+        except OSError:
+            pass
 
 
 def stream_connect(endpoint, destination, timeout=60):
@@ -120,7 +125,7 @@ def stream_connect(endpoint, destination, timeout=60):
         if "RESULT=OK" not in reply:
             if "INVALID_ID" in reply:
                 # The router lost our session (restart?); rebuild on next dial.
-                _drop_session(endpoint)
+                _drop_session(endpoint, session_id)
             raise SamError(f"STREAM CONNECT failed: {reply}")
         return sock
     except BaseException:
