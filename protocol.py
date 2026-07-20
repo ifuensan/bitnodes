@@ -318,11 +318,12 @@ def create_connection(
             # Lease set lookups and tunnel selection dwarf clearnet connect
             # times; the short clearnet open timeout would kill most dials.
             sock = sam.stream_connect(sam_proxy, address[0], timeout=max(timeout, 60))
-            logging.info("I2P-DIAL ok %s", address[0])
+            logging.debug("I2P-DIAL ok %s", address[0])
             return sock
         except sam.SamError as err:
-            # Temporary INFO visibility while bootstrapping the I2P ring.
-            logging.info("I2P-DIAL fail %s: %s", address[0], err)
+            # DEBUG only: at INFO this logged every I2P dial and grew the crawl
+            # logs to gigabytes, filling the disk and taking i2pd down with it.
+            logging.debug("I2P-DIAL fail %s: %s", address[0], err)
             raise ConnectionError(err)
     if address[0].endswith(ONION_SUFFIX) and proxy is None:
         raise ProxyRequired("tor proxy is required to connect to .onion address")
