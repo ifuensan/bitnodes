@@ -349,6 +349,26 @@ def dump(timestamp, nodes, redis_conn):
     logging.info("Wrote %s", json_output)
 
 
+def _execute_batch(redis_conn, commands):
+    """
+    Run commands [(op, args), ...] in one small non-transactional
+    pipeline, with retries. A single MULTI with 100k+ commands is one
+    multi-MB socket send that can stall under full crawl load
+    (2026-07-21 incident: ETIMEDOUT killed the cron greenlet).
+    """
+    for attempt in range(3):
+        try:
+            redis_pipe = redis_conn.pipeline(transaction=False)
+            for op, args in commands:
+                getattr(redis_pipe, op)(*args)
+            redis_pipe.execute()
+            return
+        except Exception:
+            logging.exception("Batch failed (attempt %d)", attempt)
+            gevent.sleep(2)
+    raise RuntimeError("Batch failed after 3 attempts")
+
+
 def restart(timestamp, redis_conn):
     """
     Remove keys for all nodes from current crawl.
@@ -356,18 +376,22 @@ def restart(timestamp, redis_conn):
     Update number of reachable nodes in Redis.
     Dump data for the reachable nodes into a JSON file.
     """
-    redis_pipe = redis_conn.pipeline()
+    batch = []
 
-    for key in get_keys(redis_conn, "node:*"):
-        redis_pipe.delete(key)
+    def flush():
+        if batch:
+            _execute_batch(redis_conn, batch)
+            del batch[:]
 
-    for key in get_keys(redis_conn, "crawl:cidr:*"):
-        redis_pipe.delete(key)
+    for pattern in ("node:*", "crawl:cidr:*"):
+        for key in get_keys(redis_conn, pattern):
+            batch.append(("delete", (key,)))
+            if len(batch) >= 5000:
+                flush()
+        flush()
 
     keys = redis_conn.smembers("up")
-    redis_pipe.delete("up")
-
-    redis_pipe.execute()
+    redis_conn.delete("up")
 
     nodes = set()
     ipv4 = ipv6 = onion = i2p = 0
@@ -389,7 +413,9 @@ def restart(timestamp, redis_conn):
 
         node = (address, int(port), int(services))
         nodes.add(node)
-        redis_pipe.sadd("pending", json.dumps(node))
+        batch.append(("sadd", ("pending", json.dumps(node))))
+        if len(batch) >= 5000:
+            flush()
 
     if CONF["include_checked"]:
         checked_nodes = redis_conn.zrangebyscore(
@@ -402,9 +428,14 @@ def restart(timestamp, redis_conn):
             if is_excluded(address):
                 logging.debug("Exclude: %s", address)
                 continue
-            redis_pipe.sadd("pending", json.dumps((address, port, services)))
+            batch.append(("sadd", ("pending", json.dumps((address, port, services)))))
+            if len(batch) >= 5000:
+                flush()
+    flush()
 
-    redis_pipe.execute()
+    if not nodes:
+        logging.warning("Up set was empty, skipping dump")
+        return
 
     reachable_nodes = len(nodes)
     logging.info(
@@ -446,6 +477,20 @@ def cron(redis_conn):
             redis_conn.set("crawl:master:state", "running")
 
         gevent.sleep(CONF["cron_delay"])
+
+
+def cron_forever(redis_conn):
+    """
+    Keep cron running: an uncaught exception in cron leaves
+    crawl:master:state at "starting" forever, pausing every worker and
+    starving ping/resolve/export downstream (2026-07-21 incident).
+    """
+    while True:
+        try:
+            cron(redis_conn)
+        except Exception:
+            logging.exception("Cron failed; restarting in 30 seconds")
+            gevent.sleep(30)
 
 
 def task(id, redis_conn):
@@ -977,7 +1022,7 @@ def main(argv):
     # Spawn workers (greenlets) including one worker reserved for cron tasks.
     workers = []
     if CONF["master"]:
-        workers.append(gevent.spawn(cron, redis_conn))
+        workers.append(gevent.spawn(cron_forever, redis_conn))
     for id in range(CONF["workers"] - len(workers)):
         workers.append(gevent.spawn(task, id, redis_conn))
     logging.info("Workers: %d", len(workers))
