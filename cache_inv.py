@@ -181,7 +181,6 @@ class CacheInv(Cache):
         # Apply expiry to both transaction (type 1) and block (type 2) invs.
         self.redis_pipe.expire(key, CONF["ttl"])
 
-
     def cache_pong(self, node, timestamp, nonce):
         """
         Cache pong message from the specified node.
