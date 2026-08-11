@@ -72,6 +72,11 @@ onion_relay = 1
 tor_proxies =
     127.0.0.1:9050
 
+# Always dial a given .onion through the same proxy of the pool. Must match
+# crawl.conf so both processes feed the same daemon for an onion and share
+# the circuits it already holds. See the comment in crawl.conf.default.
+tor_proxy_affinity = True
+
 # Attempt to establish connection with .b32.i2p nodes (requires a running
 # I2P router with its SAM bridge enabled)
 i2p = False

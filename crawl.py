@@ -69,6 +69,7 @@ from utils import (
     ip_port_list,
     ip_to_network,
     new_redis_conn,
+    select_proxy,
     throttle_run,
     txt_items,
 )
@@ -265,7 +266,9 @@ def connect(key, redis_conn):
     sam_proxy = None
 
     if address.endswith(ONION_SUFFIX) and CONF["onion"]:
-        proxy = random.choice(CONF["tor_proxies"])
+        proxy = select_proxy(
+            address, CONF["tor_proxies"], affinity=CONF["tor_proxy_affinity"]
+        )
 
     if address_type == "i2p" and CONF["i2p"]:
         sam_proxy = random.choice(CONF["i2p_proxies"])
@@ -942,6 +945,10 @@ def init_conf(argv):
 
     CONF["onion"] = conf.getboolean("crawl", "onion")
     CONF["tor_proxies"] = ip_port_list(conf_list(conf, "crawl", "tor_proxies"))
+    # Fallback: live conf files predate this key.
+    CONF["tor_proxy_affinity"] = conf.getboolean(
+        "crawl", "tor_proxy_affinity", fallback=True
+    )
     CONF["onion_nodes"] = conf_list(conf, "crawl", "onion_nodes")
 
     # I2P keys use fallbacks so conf files generated before this feature

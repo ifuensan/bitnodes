@@ -159,6 +159,14 @@ onion = True
 tor_proxies =
     127.0.0.1:9050
 
+# Always dial a given .onion through the same proxy of the pool (chosen by a
+# stable hash of the address). Tor keeps its per-onion state -- descriptor,
+# introduction and rendezvous circuits -- in the daemon that built it, so a
+# revisit landing on a different daemon repays the whole onion handshake and
+# makes MaxCircuitDirtiness nearly inert. Set to False for uniform random
+# choice per dial (the upstream behaviour).
+tor_proxy_affinity = True
+
 # List of initial .onion nodes
 onion_nodes =
 

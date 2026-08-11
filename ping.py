@@ -57,6 +57,7 @@ from utils import (
     ip_port_list,
     ip_to_network,
     new_redis_conn,
+    select_proxy,
     txt_items,
 )
 
@@ -254,7 +255,13 @@ class ConnectionManager(object):
 
             if self.address.endswith(ONION_SUFFIX) and CONF["onion"]:
                 self.relay = CONF["onion_relay"]
-                self.proxy = random.choice(CONF["tor_proxies"])
+                # Same selection as crawl.py so both processes feed the same
+                # daemon for this onion and share the circuits it holds.
+                self.proxy = select_proxy(
+                    self.address,
+                    CONF["tor_proxies"],
+                    affinity=CONF["tor_proxy_affinity"],
+                )
             elif self.address.endswith(I2P_SUFFIX) and CONF["i2p"]:
                 self.sam_proxy = random.choice(CONF["i2p_proxies"])
 
@@ -563,6 +570,10 @@ def init_conf(argv):
 
     CONF["onion"] = conf.getboolean("ping", "onion")
     CONF["tor_proxies"] = ip_port_list(conf_list(conf, "ping", "tor_proxies"))
+    # Fallback: live conf files predate this key.
+    CONF["tor_proxy_affinity"] = conf.getboolean(
+        "ping", "tor_proxy_affinity", fallback=True
+    )
     CONF["onion_relay"] = conf.getint("ping", "onion_relay")
 
     # Fallbacks keep conf files generated before this feature working.

@@ -33,6 +33,7 @@ from gevent import monkey
 monkey.patch_all()
 
 import functools
+import hashlib
 import logging
 import os
 import random
@@ -154,6 +155,29 @@ def conf_range(conf, section, name):
     if len(vals) == 2:
         return [vals[0], vals[1]]
     return [vals[0], vals[0]]
+
+
+def select_proxy(address, proxies, affinity=True):
+    """
+    Return the proxy to dial the specified address through.
+
+    With affinity, an address always maps to the same proxy. Tor keeps its
+    per-onion state (descriptor, introduction and rendezvous circuits) in the
+    daemon that built it and reuses it for later streams to the same service,
+    so a revisit that lands on a different daemon of the pool throws that
+    state away and repays the full onion handshake.
+
+    sha256 rather than hash(): str hashing is salted per process, so crawl and
+    ping would disagree on the same address and every restart would reshuffle
+    the whole assignment.
+    """
+    proxies = sorted(proxies)
+    if not proxies:
+        return None
+    if not affinity:
+        return random.choice(proxies)
+    digest = hashlib.sha256(address.encode()).digest()
+    return proxies[int.from_bytes(digest[:8], "big") % len(proxies)]
 
 
 def conf_list(conf, section, name, func=str):
